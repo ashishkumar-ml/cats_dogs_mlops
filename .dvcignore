@@ -1,0 +1,5 @@
+# Add patterns of files dvc should ignore, like git does.
+# https://dvc.org/doc/user-guide/dvcignore
+**/__pycache__
+**/*.pyc
+.git

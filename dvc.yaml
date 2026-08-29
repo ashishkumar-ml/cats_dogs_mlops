@@ -1,0 +1,49 @@
+stages:
+  preprocess:
+    cmd: >
+      python -c "
+      from src.preprocess import split_dataset;
+      split_dataset('data/raw', 'data/processed',
+                    train_ratio=0.8, val_ratio=0.1)
+      "
+    deps:
+      - data/raw
+      - src/preprocess.py
+    outs:
+      - data/processed
+    params:
+      - params.yaml:
+          - data.train_split
+          - data.val_split
+          - data.test_split
+          - data.img_size
+
+  train:
+    cmd: >
+      python train.py
+        --data_dir  data/processed
+        --model_path models/best_model.pt
+        --epochs    ${train.epochs}
+        --batch_size ${train.batch_size}
+        --lr        ${train.learning_rate}
+        --wd        ${train.weight_decay}
+        --img_size  ${data.img_size}
+        --experiment ${train.experiment_name}
+        --run_name  ${train.run_name}
+    deps:
+      - data/processed
+      - src/model.py
+      - src/preprocess.py
+      - train.py
+    outs:
+      - models/best_model.pt
+    params:
+      - params.yaml:
+          - train.epochs
+          - train.batch_size
+          - train.learning_rate
+          - train.weight_decay
+          - data.img_size
+    metrics:
+      - metrics.json:
+          cache: false

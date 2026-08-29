@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  # ── Inference API ──────────────────────────────────────────────────────────
+  api:
+    image: ${DOCKER_IMAGE:-cats-dogs-classifier:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cats-dogs-api
+    ports:
+      - "8000:8000"
+    environment:
+      - MODEL_PATH=models/best_model.pt
+    volumes:
+      - ./models:/app/models:ro        # mount model weights at runtime
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  # ── MLflow tracking server (optional – comment out if not needed) ──────────
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v2.8.1
+    container_name: mlflow-server
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./mlruns:/mlflow/mlruns
+    command: >
+      mlflow server
+        --backend-store-uri /mlflow/mlruns
+        --default-artifact-root /mlflow/mlruns
+        --host 0.0.0.0
+        --port 5000
+    restart: unless-stopped
+
+  # ── Prometheus ──────────────────────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.47.2
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - api
+    restart: unless-stopped

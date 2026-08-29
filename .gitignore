@@ -1,0 +1,37 @@
+__pycache__/
+*.py[cod]
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.env
+.venv
+venv/
+env/
+
+# ML artifacts
+mlruns/
+models/*.pt
+models/*.pkl
+models/*.h5
+
+# Data (tracked by DVC)
+data/raw/
+data/processed/
+
+# Logs
+*.log
+logs/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+
+# Docker
+.dockerignore

@@ -1,0 +1,90 @@
+name: CD — Deploy & Smoke Test
+
+on:
+  push:
+    branches: [main]         # deploy only on main merges
+  workflow_run:
+    workflows: ["CI — Test, Build & Push"]
+    types: [completed]
+    branches: [main]
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: ${{ secrets.DOCKERHUB_USERNAME }}/cats-dogs-classifier
+  IMAGE_TAG: latest
+
+jobs:
+  deploy:
+    name: Deploy to Docker Compose
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'push' }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Pull latest image ──────────────────────────────────────────────────
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Pull latest image
+        run: docker pull ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+
+      # ── Deploy with Docker Compose ─────────────────────────────────────────
+      - name: Create models directory (CI has no real weights)
+        run: mkdir -p models && touch models/best_model.pt
+
+      - name: Start services
+        env:
+          DOCKER_IMAGE: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+        run: |
+          docker compose up -d api
+          echo "Waiting for service to become healthy..."
+          sleep 20
+
+      # ── Smoke tests ────────────────────────────────────────────────────────
+      - name: Health check smoke test
+        run: |
+          STATUS=$(curl -sf http://localhost:8000/health | python3 -c \
+            "import sys,json; d=json.load(sys.stdin); print(d['status'])")
+          echo "Health status: $STATUS"
+          [ "$STATUS" = "ok" ] || { echo "HEALTH CHECK FAILED"; exit 1; }
+
+      - name: Prediction smoke test
+        run: |
+          # Generate a small random JPEG inline for the smoke test
+          python3 - <<'PYEOF'
+          from PIL import Image
+          import io, numpy as np
+          arr = np.random.randint(0,255,(64,64,3),dtype=np.uint8)
+          img = Image.fromarray(arr,'RGB')
+          img.save('/tmp/smoke_test.jpg')
+          PYEOF
+
+          RESP=$(curl -sf -X POST http://localhost:8000/predict \
+               -F "file=@/tmp/smoke_test.jpg;type=image/jpeg")
+          echo "Prediction response: $RESP"
+
+          CLASS=$(echo "$RESP" | python3 -c \
+            "import sys,json; print(json.load(sys.stdin)['predicted_class'])")
+          echo "Predicted class: $CLASS"
+          [ -n "$CLASS" ] || { echo "PREDICTION SMOKE TEST FAILED"; exit 1; }
+
+      # ── Cleanup ────────────────────────────────────────────────────────────
+      - name: Tear down services
+        if: always()
+        run: docker compose down
+
+      # ── (Optional) Deploy to Kubernetes ───────────────────────────────────
+      # Uncomment to deploy to a real cluster using kubectl
+      # - name: Set up kubectl
+      #   uses: azure/setup-kubectl@v3
+      # - name: Deploy to Kubernetes
+      #   run: |
+      #     kubectl set image deployment/cats-dogs-api \
+      #       cats-dogs-api=${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }} \
+      #       --record
+      #     kubectl rollout status deployment/cats-dogs-api --timeout=120s

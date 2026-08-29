@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: cats-dogs-api-svc
+  labels:
+    app: cats-dogs-api
+spec:
+  selector:
+    app: cats-dogs-api
+  type: NodePort          # Change to LoadBalancer for cloud deployments
+  ports:
+    - name: http
+      protocol: TCP
+      port: 80
+      targetPort: 8000
+      nodePort: 30080     # Access at http://<node-ip>:30080
